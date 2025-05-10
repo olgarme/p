@@ -1,0 +1,1 @@
+web: gunicorn --workers=2 --log-level debug --chdir examples/phone-chatbot app:app --bind=0.0.0.0:$PORT 
