@@ -33,6 +33,17 @@ load_dotenv(override=True)
 
 daily_helpers = {}
 
+# ----------------- Environment Validation ----------------- #
+
+def validate_environment():
+    missing_vars = []
+    for var in REQUIRED_ENV_VARS:
+        if not os.getenv(var):
+            missing_vars.append(var)
+    if missing_vars:
+        print(f"Warning: Missing environment variables: {', '.join(missing_vars)}")
+        return False
+    return True
 
 # ----------------- Daily Room Management ----------------- #
 
@@ -151,6 +162,17 @@ app.add_middleware(
 
 
 # ----------------- API Endpoints ----------------- #
+
+
+@app.get("/")
+async def health_check():
+    """Health check endpoint."""
+    env_status = validate_environment()
+    return {
+        "status": "ok",
+        "environment": "valid" if env_status else "missing variables",
+        "message": "Phone Chatbot Server is running!"
+    }
 
 
 @app.post("/start")

@@ -1,29 +1,10 @@
-from flask import Flask, request, jsonify
-from bot_runner import BotRunner
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+from bot_runner import app as bot_app
+from datetime import datetime
 import os
 
-app = Flask(__name__)
-bot_runner = BotRunner()
-
-@app.route('/')
-def home():
-    return "Phone Chatbot Server is running!"
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.json
-    return bot_runner.handle_webhook(data)
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000))) 
-
-""" from flask import Flask, request, Response
-from twilio.twiml.voice_response import VoiceResponse, Say, Pause, Hangup
-from datetime import datetime
-
-app = Flask(__name__)
-
- # Global session state
+# Global session state
 call_state = {
     "start_time": None,
     "silence_events": 0,
@@ -31,50 +12,76 @@ call_state = {
     "unanswered_prompts": 0
 }
 
-@app.route("/twilio", methods=["POST"])
-def handle_call():
-    response = VoiceResponse()
+app = FastAPI()
 
+# Include all routes from bot_runner
+app.include_router(bot_app.router)
+
+@app.get("/")
+async def home():
+    """Health check endpoint."""
+    return {
+        "status": "ok",
+        "message": "Phone Chatbot Server is running!",
+        "endpoints": {
+            "/": "Health check",
+            "/start": "Start a new bot session",
+            "/twilio": "Handle Twilio webhooks",
+            "/end": "End call and get summary"
+        }
+    }
+
+@app.post("/twilio")
+async def handle_call(request: Request):
+    """Handle incoming Twilio calls."""
     if call_state["start_time"] is None:
         call_state["start_time"] = datetime.utcnow()
-        response.say("Hello! This is your AI phone assistant.")
-        response.pause(length=5)  # Wait for user
-        return str(response)
+        return {
+            "response": "Hello! This is your AI phone assistant.",
+            "pause": 5
+        }
 
-    speech_result = request.form.get("SpeechResult", "").strip()
-    confidence = request.form.get("Confidence", 0)
+    data = await request.json()
+    speech_result = data.get("SpeechResult", "").strip()
+    confidence = data.get("Confidence", 0)
 
     if speech_result:
         call_state["user_utterances"] += 1
         call_state["unanswered_prompts"] = 0
-        response.say(f"You said: {speech_result}")
-        response.pause(length=5)
-        response.say("Do you want to continue?")
+        return {
+            "response": f"You said: {speech_result}",
+            "pause": 5,
+            "next_prompt": "Do you want to continue?"
+        }
     else:
         # No speech detected → silence
         call_state["silence_events"] += 1
         call_state["unanswered_prompts"] += 1
 
         if call_state["unanswered_prompts"] >= 3:
-            response.say("No response detected. Goodbye.")
-            response.hangup()
             log_summary()
-            return str(response)
+            return {
+                "response": "No response detected. Goodbye.",
+                "end_call": True
+            }
 
-        response.say("Are you still there?")
-        response.pause(length=5)
+        return {
+            "response": "Are you still there?",
+            "pause": 5
+        }
 
-    return str(response)
-
-@app.route("/end", methods=["POST"])
-def end_call():
-    response = VoiceResponse()
-    response.say("Call ending. Goodbye.")
-    response.hangup()
+@app.post("/end")
+async def end_call():
+    """End the call and get a summary."""
+    response = "Call ending. Goodbye."
     log_summary()
-    return str(response)
+    return {
+        "response": response,
+        "end_call": True
+    }
 
 def log_summary():
+    """Log call statistics."""
     duration = (datetime.utcnow() - call_state["start_time"]).total_seconds()
     print("\n📞 Call Summary:")
     print(f"  Duration: {duration:.2f} seconds")
@@ -87,4 +94,6 @@ def log_summary():
         call_state[key] = 0 if isinstance(call_state[key], int) else None
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000) """
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port) 
