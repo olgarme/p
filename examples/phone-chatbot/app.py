@@ -1,8 +1,18 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-from bot_runner import app as bot_app
+import logging
+import sys
+import traceback
 from datetime import datetime
 import os
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 
 # Global session state
 call_state = {
@@ -14,22 +24,42 @@ call_state = {
 
 app = FastAPI()
 
-# Include all routes from bot_runner
-app.include_router(bot_app.router)
+try:
+    from bot_runner import app as bot_app
+    app.include_router(bot_app.router)
+    logger.info("Successfully imported and included bot_runner routes")
+except Exception as e:
+    logger.error(f"Failed to import bot_runner: {str(e)}")
+    logger.error(traceback.format_exc())
 
 @app.get("/")
 async def home():
     """Health check endpoint."""
-    return {
-        "status": "ok",
-        "message": "Phone Chatbot Server is running!",
-        "endpoints": {
-            "/": "Health check",
-            "/start": "Start a new bot session",
-            "/twilio": "Handle Twilio webhooks",
-            "/end": "End call and get summary"
+    try:
+        # Check environment variables
+        required_vars = ["OPENAI_API_KEY", "GOOGLE_API_KEY", "DAILY_API_KEY", "CARTESIA_API_KEY", "DEEPGRAM_API_KEY"]
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        response = {
+            "status": "ok",
+            "message": "Phone Chatbot Server is running!",
+            "endpoints": {
+                "/": "Health check",
+                "/start": "Start a new bot session",
+                "/twilio": "Handle Twilio webhooks",
+                "/end": "End call and get summary"
+            },
+            "environment": {
+                "missing_variables": missing_vars,
+                "port": os.environ.get("PORT", "8000")
+            }
         }
-    }
+        logger.info(f"Health check response: {response}")
+        return response
+    except Exception as e:
+        logger.error(f"Error in health check: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/twilio")
 async def handle_call(request: Request):
