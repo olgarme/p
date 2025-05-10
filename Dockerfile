@@ -11,10 +11,11 @@ COPY examples/ /app/examples/
 
 WORKDIR /app
 RUN ls --recursive /app/
-RUN pip3 install --upgrade -r requirements.txt
+RUN pip3 install --upgrade pip
+RUN pip3 install build
 RUN python -m build .
 RUN pip3 install .
-RUN pip3 install gunicorn
+RUN pip3 install fastapi==0.115.6 uvicorn python-dotenv python-multipart gunicorn==21.2.0 aiohttp==3.9.3
 # If running on Ubuntu, Azure TTS requires some extra config
 # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/quickstarts/setup-platform?pivots=programming-language-python&tabs=linux%2Cubuntu%2Cdotnetcli%2Cdotnet%2Cjre%2Cmaven%2Cnodejs%2Cmac%2Cpypi
 
