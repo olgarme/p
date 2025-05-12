@@ -6,10 +6,8 @@ MAX_SESSION_TIME = 5 * 60  # 5 minutes
 
 # Required environment variables
 REQUIRED_ENV_VARS = [
-    "OPENAI_API_KEY",
-    "GOOGLE_API_KEY",
     "DAILY_API_KEY",
-    "CARTESIA_API_KEY",
+    "GOOGLE_API_KEY",
     "DEEPGRAM_API_KEY",
 ]
 
