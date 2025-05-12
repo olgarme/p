@@ -11,10 +11,10 @@ COPY examples/ /app/examples/
 
 # Install dependencies
 RUN pip3 install --upgrade pip
+RUN pip3 install --no-cache-dir -r requirements.txt
 RUN pip3 install build
 RUN python -m build .
 RUN pip3 install .
-RUN pip3 install fastapi==0.115.6 uvicorn python-dotenv python-multipart gunicorn==21.2.0 aiohttp==3.9.3
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
