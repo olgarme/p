@@ -37,7 +37,9 @@ call_state = {
     "start_time": None,
     "silence_events": 0,
     "user_utterances": 0,
-    "unanswered_prompts": 0
+    "unanswered_prompts": 0,
+    "last_speech_time": None,
+    "silence_duration": 0
 }
 
 # Pydantic models for request/response validation
@@ -105,8 +107,11 @@ async def home():
 async def handle_call(request: Request):
     """Handle incoming Twilio calls."""
     try:
+        current_time = datetime.utcnow()
+        
         if call_state["start_time"] is None:
-            call_state["start_time"] = datetime.utcnow()
+            call_state["start_time"] = current_time
+            call_state["last_speech_time"] = current_time
             return TwilioResponse(
                 response="Hello! This is your AI phone assistant.",
                 pause=5
@@ -118,6 +123,8 @@ async def handle_call(request: Request):
         if twilio_request.SpeechResult:
             call_state["user_utterances"] += 1
             call_state["unanswered_prompts"] = 0
+            call_state["last_speech_time"] = current_time
+            call_state["silence_duration"] = 0
             return TwilioResponse(
                 response=f"You said: {twilio_request.SpeechResult}",
                 pause=5,
@@ -127,13 +134,25 @@ async def handle_call(request: Request):
             # No speech detected → silence
             call_state["silence_events"] += 1
             call_state["unanswered_prompts"] += 1
-
-            if call_state["unanswered_prompts"] >= 3:
-                log_summary()
-                return TwilioResponse(
-                    response="No response detected. Goodbye.",
-                    end_call=True
-                )
+            
+            # Calculate silence duration
+            if call_state["last_speech_time"]:
+                silence_duration = (current_time - call_state["last_speech_time"]).total_seconds()
+                call_state["silence_duration"] = silence_duration
+                
+                # If silence exceeds 10 seconds, play TTS prompt
+                if silence_duration >= 10:
+                    call_state["unanswered_prompts"] += 1
+                    if call_state["unanswered_prompts"] >= 3:
+                        log_summary()
+                        return TwilioResponse(
+                            response="No response detected after multiple attempts. Goodbye.",
+                            end_call=True
+                        )
+                    return TwilioResponse(
+                        response="I notice you've been quiet for a while. Are you still there?",
+                        pause=5
+                    )
 
             return TwilioResponse(
                 response="Are you still there?",
@@ -166,6 +185,7 @@ def log_summary():
         logger.info("\n📞 Call Summary:")
         logger.info(f"  Duration: {duration:.2f} seconds")
         logger.info(f"  Silence Events: {call_state['silence_events']}")
+        logger.info(f"  Longest Silence: {call_state['silence_duration']:.2f} seconds")
         logger.info(f"  User Utterances: {call_state['user_utterances']}")
         logger.info(f"  Unanswered Prompts: {call_state['unanswered_prompts']}")
 
