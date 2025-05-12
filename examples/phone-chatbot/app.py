@@ -14,6 +14,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Log environment variables (without values for security)
+logger.info("Checking environment variables...")
+for var in ["DAILY_API_KEY", "GOOGLE_API_KEY", "DEEPGRAM_API_KEY"]:
+    if os.getenv(var):
+        logger.info(f"{var} is set")
+    else:
+        logger.error(f"{var} is not set")
+
 # Global session state
 call_state = {
     "start_time": None,
@@ -24,33 +32,28 @@ call_state = {
 
 app = FastAPI()
 
-try:
-    from bot_runner import app as bot_app
-    app.include_router(bot_app.router)
-    logger.info("Successfully imported and included bot_runner routes")
-except Exception as e:
-    logger.error(f"Failed to import bot_runner: {str(e)}")
-    logger.error(traceback.format_exc())
-
 @app.get("/")
 async def home():
     """Health check endpoint."""
     try:
-        # Check environment variables
-        required_vars = ["OPENAI_API_KEY", "GOOGLE_API_KEY", "DAILY_API_KEY", "CARTESIA_API_KEY", "DEEPGRAM_API_KEY"]
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        # Check if we're in the correct directory
+        current_dir = os.getcwd()
+        logger.info(f"Current working directory: {current_dir}")
+        
+        # List files in current directory
+        files = os.listdir(current_dir)
+        logger.info(f"Files in current directory: {files}")
         
         response = {
             "status": "ok",
             "message": "Phone Chatbot Server is running!",
             "endpoints": {
                 "/": "Health check",
-                "/start": "Start a new bot session",
                 "/twilio": "Handle Twilio webhooks",
                 "/end": "End call and get summary"
             },
             "environment": {
-                "missing_variables": missing_vars,
+                "working_directory": current_dir,
                 "port": os.environ.get("PORT", "8000")
             }
         }

@@ -38,4 +38,4 @@ WORKDIR /app
 
 EXPOSE 8000
 # run
-CMD ["gunicorn", "--workers=2", "--log-level", "debug", "--chdir", "examples/phone-chatbot", "--capture-output", "bot_runner:app", "--bind=0.0.0.0:8000"]
+CMD ["gunicorn", "--workers=2", "--log-level", "debug", "--chdir", "examples/phone-chatbot", "--capture-output", "app:app", "--bind=0.0.0.0:8000"]
