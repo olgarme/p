@@ -1,1 +1,1 @@
-web: gunicorn --workers=2 --log-level debug --chdir examples/phone-chatbot bot_runner:app --bind=0.0.0.0:$PORT 
+web: pip install --no-cache-dir -r requirements.txt && pip install twilio==7.0.0 && gunicorn --workers=2 --log-level debug --chdir examples/phone-chatbot bot_runner:app --bind=0.0.0.0:$PORT 
