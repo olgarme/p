@@ -2,40 +2,49 @@
 FROM python:3.11.5
 
 WORKDIR /app
-COPY requirements.txt /app
-COPY *.py /app
-COPY pyproject.toml /app
 
+# Copy all necessary files
+COPY requirements.txt /app/
+COPY pyproject.toml /app/
 COPY src/ /app/src/
 COPY examples/ /app/examples/
 
-WORKDIR /app
-RUN ls --recursive /app/
+# Install dependencies
 RUN pip3 install --upgrade pip
 RUN pip3 install build
 RUN python -m build .
 RUN pip3 install .
 RUN pip3 install fastapi==0.115.6 uvicorn python-dotenv python-multipart gunicorn==21.2.0 aiohttp==3.9.3
-# If running on Ubuntu, Azure TTS requires some extra config
-# https://learn.microsoft.com/en-us/azure/ai-services/speech-service/quickstarts/setup-platform?pivots=programming-language-python&tabs=linux%2Cubuntu%2Cdotnetcli%2Cdotnet%2Cjre%2Cmaven%2Cnodejs%2Cmac%2Cpypi
 
-RUN wget -O - https://www.openssl.org/source/openssl-1.1.1w.tar.gz | tar zxf -
-WORKDIR openssl-1.1.1w
-RUN ./config --prefix=/usr/local
-RUN make -j $(nproc)
-RUN make install_sw install_ssldirs
-RUN ldconfig -v
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libssl-dev \
+    ca-certificates \
+    libasound2 \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install OpenSSL
+RUN wget -O - https://www.openssl.org/source/openssl-1.1.1w.tar.gz | tar zxf - \
+    && cd openssl-1.1.1w \
+    && ./config --prefix=/usr/local \
+    && make -j $(nproc) \
+    && make install_sw install_ssldirs \
+    && ldconfig -v \
+    && cd .. \
+    && rm -rf openssl-1.1.1w
+
 ENV SSL_CERT_DIR=/etc/ssl/certs
-
-#ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-RUN apt clean
-RUN apt-get update
-RUN apt-get -y install build-essential libssl-dev ca-certificates libasound2 wget
-
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /app
+# Set working directory to phone-chatbot
+WORKDIR /app/examples/phone-chatbot
+
+# List contents for debugging
+RUN ls -la
 
 EXPOSE 8000
-# run
-CMD ["gunicorn", "--workers=2", "--log-level", "debug", "--chdir", "examples/phone-chatbot", "--capture-output", "app:app", "--bind=0.0.0.0:8000"]
+
+# Run the application
+CMD ["gunicorn", "--workers=2", "--log-level", "debug", "--capture-output", "app:app", "--bind=0.0.0.0:8000"]
