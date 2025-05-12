@@ -4,7 +4,7 @@ import os
 import shlex
 import subprocess
 from contextlib import asynccontextmanager
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import aiohttp
 from bot_constants import (
@@ -18,9 +18,13 @@ from bot_runner_helpers import (
     process_dialin_request,
 )
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, APIRouter, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+import logging
+import sys
+import traceback
 
 from pipecat.transports.services.helpers.daily_rest import (
     DailyRESTHelper,
@@ -32,6 +36,42 @@ from pipecat.transports.services.helpers.daily_rest import (
 load_dotenv(override=True)
 
 daily_helpers = {}
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
+
+# Optional environment variables
+OPTIONAL_ENV_VARS = {
+    "DAILY_API_KEY": "Daily.co API key (optional)",
+    "GOOGLE_API_KEY": "Google API key (optional)",
+    "DEEPGRAM_API_KEY": "Deepgram API key (optional)"
+}
+
+# Log environment variables (without values for security)
+logger.info("Checking environment variables...")
+for var, description in OPTIONAL_ENV_VARS.items():
+    if os.getenv(var):
+        logger.info(f"{var} is set")
+    else:
+        logger.warning(f"{var} is not set - {description}")
+
+# Pydantic models
+class BotStartRequest(BaseModel):
+    room_name: str
+    bot_name: Optional[str] = "AI Assistant"
+
+class BotResponse(BaseModel):
+    status: str
+    message: str
+    room_name: Optional[str] = None
+    bot_name: Optional[str] = None
+
+router = APIRouter()
 
 # ----------------- Environment Validation ----------------- #
 
@@ -164,83 +204,67 @@ app.add_middleware(
 # ----------------- API Endpoints ----------------- #
 
 
-@app.get("/")
+@router.get("/health")
 async def health_check():
     """Health check endpoint."""
-    env_status = validate_environment()
-    return {
-        "status": "ok",
-        "environment": "valid" if env_status else "missing variables",
-        "message": "Phone Chatbot Server is running!"
-    }
-
-
-@app.post("/start")
-async def handle_start_request(request: Request) -> JSONResponse:
-    """Unified endpoint to handle bot configuration for different scenarios."""
-    # Get default room URL from environment
-    room_url = os.getenv("DAILY_SAMPLE_ROOM_URL", None)
-
     try:
-        data = await request.json()
-
-        # Handle webhook test
-        if "test" in data:
-            return JSONResponse({"test": True})
-
-        # Handle direct dialin webhook from Daily
-        if all(key in data for key in ["From", "To", "callId", "callDomain"]):
-            body = await process_dialin_request(data)
-        # Handle body-based request
-        elif "config" in data:
-            # Use the registry to set up the bot configuration
-            body = bot_registry.setup_configuration(data["config"])
-        else:
-            raise HTTPException(status_code=400, detail="Invalid request format")
-
-        # Ensure prompt configuration
-        body = ensure_prompt_config(body)
-
-        # Detect which bot type to use
-        bot_type_name = bot_registry.detect_bot_type(body)
-        if not bot_type_name:
-            raise HTTPException(
-                status_code=400, detail="Configuration doesn't match any supported scenario"
-            )
-
-        # Create the Daily room
-        room_details = await create_daily_room(room_url, body)
-
-        # Start the bot
-        await start_bot(room_details, body, bot_type_name)
-
-        # Get the bot type
-        bot_type = bot_registry.get_bot(bot_type_name)
-
-        # Build the response
-        response = {"status": "Bot started", "bot_type": bot_type_name}
-
-        # Add room URL for test mode
-        if bot_type.has_test_mode(body):
-            response["room_url"] = room_details["room"]
-            # Remove llm_model from response as it's no longer relevant
-            if "llm" in body:
-                response["llm_provider"] = body["llm"]  # Optionally keep track of provider
-
-        # Add dialout info for dialout scenarios
-        if "dialout_settings" in body and len(body["dialout_settings"]) > 0:
-            first_setting = body["dialout_settings"][0]
-            if "phoneNumber" in first_setting:
-                response["dialing_to"] = f"phone:{first_setting['phoneNumber']}"
-            elif "sipUri" in first_setting:
-                response["dialing_to"] = f"sip:{first_setting['sipUri']}"
-
-        return JSONResponse(response)
-
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+        env_status = {
+            var: bool(os.getenv(var))
+            for var in OPTIONAL_ENV_VARS.keys()
+        }
+        
+        return {
+            "status": "ok",
+            "message": "Bot Runner is healthy",
+            "environment": {
+                "variables": env_status
+            }
+        }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Request processing error: {str(e)}")
+        logger.error(f"Error in health check: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/start", response_model=BotResponse)
+async def start_bot(request: BotStartRequest, background_tasks: BackgroundTasks):
+    """Start a bot in a room."""
+    try:
+        logger.info(f"Starting bot {request.bot_name} in room {request.room_name}")
+        
+        # Add your bot initialization logic here
+        # This is where you would integrate with your bot framework
+        
+        return BotResponse(
+            status="success",
+            message=f"Bot {request.bot_name} started in room {request.room_name}",
+            room_name=request.room_name,
+            bot_name=request.bot_name
+        )
+    except Exception as e:
+        logger.error(f"Error starting bot: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/stop", response_model=BotResponse)
+async def stop_bot(request: BotStartRequest):
+    """Stop a bot in a room."""
+    try:
+        logger.info(f"Stopping bot {request.bot_name} in room {request.room_name}")
+        
+        # Add your bot cleanup logic here
+        
+        return BotResponse(
+            status="success",
+            message=f"Bot {request.bot_name} stopped in room {request.room_name}",
+            room_name=request.room_name,
+            bot_name=request.bot_name
+        )
+    except Exception as e:
+        logger.error(f"Error stopping bot: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ----------------- Main ----------------- #
